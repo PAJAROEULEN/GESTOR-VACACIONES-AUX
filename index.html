@@ -33,23 +33,19 @@
     .header-left { display: flex; align-items: center; gap: 8px; }
     .title { font-size: 18px; font-weight: 500; }
     
-    .header-actions { display: flex; align-items: center; gap: 6px; }
-    .year-select-container {
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .year-badge {
       background: rgba(255, 255, 255, 0.2);
-      border-radius: 8px; padding: 3px 8px; display: flex; align-items: center;
+      border-radius: 8px; padding: 4px 10px;
+      font-size: 14px; font-weight: 700; letter-spacing: 0.5px;
     }
-    select.year-picker {
-      background: transparent; color: white; border: none; font-size: 14px;
-      font-weight: 700; outline: none; cursor: pointer;
-    }
-    select.year-picker option { color: #000; }
 
     .btn-icon-header {
       background: transparent; border: none; color: white; cursor: pointer;
       display: flex; align-items: center; justify-content: center; padding: 6px;
-      border-radius: 50%;
+      border-radius: 50%; transition: background 0.2s;
     }
-    .btn-icon-header:hover { background: rgba(255,255,255,0.15); }
+    .btn-icon-header:hover { background: rgba(255,255,255,0.18); }
 
     .status-banner {
       background: #e2e8f0; color: #334155; padding: 10px 16px;
@@ -175,7 +171,6 @@
     .modal-btn-confirm { background: var(--primary); color: #fff; }
     .modal-btn-confirm.danger { background: #ef4444; }
 
-    /* Item de turno en la lista modal */
     .turn-item {
       display: flex; justify-content: space-between; align-items: center;
       padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
@@ -224,20 +219,20 @@
   <!-- APLICACIÓN PRINCIPAL -->
   <header>
     <div class="header-left">
-      <span class="material-icons">event</span>
+      <span class="material-icons">beach_access</span>
       <div class="title">Vacaciones</div>
+      <div id="yearDisplay" class="year-badge">----</div>
     </div>
     <div class="header-actions">
-      <!-- Botón para ver el orden de los turnos de este año -->
+      <!-- Botón de descarga de Excel -->
+      <button class="btn-icon-header" onclick="descargarExcel()" title="Descargar datos en Excel (CSV)">
+        <span class="material-icons">table_view</span>
+      </button>
+      <!-- Botón de lista de turnos -->
       <button class="btn-icon-header" onclick="verTurnosModal()" title="Ver orden de turnos">
         <span class="material-icons">format_list_numbered</span>
       </button>
-      <button id="btnExport" class="btn-icon-header" style="display:none;" onclick="exportarCSV()" title="Descargar Excel / CSV">
-        <span class="material-icons">download</span>
-      </button>
-      <div class="year-select-container">
-        <select id="yearPicker" class="year-picker" onchange="cambiarAno()"></select>
-      </div>
+      <!-- Cerrar sesión -->
       <button class="btn-icon-header" onclick="cerrarSesion()" title="Cerrar sesión">
         <span class="material-icons">logout</span>
       </button>
@@ -278,20 +273,21 @@
 
   <script>
     // ========================================================
-    // TUS CREDENCIALES
+    // CONFIGURACIÓN Y CREDENCIALES
     // ========================================================
     const SUPABASE_URL = "https://lraywbwvsnebxjprzubk.supabase.co";
-    
-    const SUPABASE_ANON_KEY = "sb_publishable_OciLEsZrh754NORLAQrLbg_l6rQ8s3I";
+    const SUPABASE_ANON_KEY = "sb_publishable_OcIlEsZrh754NORLAQrLbg_l6rQ8s3I";
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let currentSelectedYear = 2026;
+    // Año actual automático del sistema
+    const currentSelectedYear = new Date().getFullYear();
     let currentUser = null;
     let globalState = null;
 
     window.onload = function() {
-      initYearSelector();
+      document.getElementById('yearDisplay').innerText = currentSelectedYear;
+
       const savedEmail = localStorage.getItem('vac_email');
       const savedPin = localStorage.getItem('vac_pin');
       if (savedEmail && savedPin) {
@@ -301,25 +297,12 @@
       }
     };
 
-    function initYearSelector() {
-      const picker = document.getElementById('yearPicker');
-      picker.innerHTML = '';
-      const baseYear = 2026;
-      for (let y = baseYear; y <= baseYear + 10; y++) {
-        let opt = document.createElement('option');
-        opt.value = y;
-        opt.innerText = y;
-        if (y === currentSelectedYear) opt.selected = true;
-        picker.appendChild(opt);
-      }
-    }
-
     async function iniciarSesion() {
       const email = document.getElementById('txtEmail').value.trim().toLowerCase();
       const pin = document.getElementById('txtPin').value.trim();
 
       if (!email || !pin) {
-        showErrorModal('Por favor, ingresa tu correo y PIN.');
+        showErrorModal('Por favor, introduce tu correo y PIN.');
         return;
       }
 
@@ -333,17 +316,13 @@
           .maybeSingle();
 
         if (error) throw error;
-        if (!data) throw new Error('Email o PIN incorrectos.');
+        if (!data) throw new Error('Email o PIN no válidos.');
 
         currentUser = data;
         localStorage.setItem('vac_email', email);
         localStorage.setItem('vac_pin', pin);
 
         document.getElementById('loginScreen').style.display = 'none';
-        if (currentUser.role === 'gestor') {
-          document.getElementById('btnExport').style.display = 'flex';
-        }
-
         await cargarDatosAno(currentSelectedYear);
       } catch (err) {
         showErrorModal(err.message || 'Error al autenticar');
@@ -357,23 +336,18 @@
       localStorage.removeItem('vac_pin');
       currentUser = null;
       document.getElementById('loginScreen').style.display = 'flex';
-      document.getElementById('btnExport').style.display = 'none';
-    }
-
-    async function cambiarAno() {
-      currentSelectedYear = parseInt(document.getElementById('yearPicker').value);
-      await cargarDatosAno(currentSelectedYear);
     }
 
     // ========================================================
     // ALGORITMO DE ROTACIÓN ANUAL MATEMÁTICA
+    // Año 2026: w1, w2, w3...
+    // Año 2027: w2, w3..., w1 (el primero pasa al final)
     // ========================================================
     function calcularOrdenTurnos(baseWorkers, targetYear) {
       const N = baseWorkers.length;
       if (N === 0) return [];
 
       const baseYear = 2026;
-      // Cada año que avanza, la lista se desplaza 1 puesto: el 1º pasa a ser el último
       let shift = ((targetYear - baseYear) % N + N) % N;
       let rotated = [...baseWorkers.slice(shift), ...baseWorkers.slice(0, shift)];
 
@@ -388,24 +362,24 @@
     async function cargarDatosAno(year) {
       showLoader(true);
       try {
-        // 1. Obtener trabajadores ordenados por su ORDEN_INICIAL
+        // 1. Obtener trabajadores ordenados por orden_inicial
         const { data: baseWorkers, error: errW } = await db
           .from('trabajadores')
           .select('*')
           .order('orden_inicial', { ascending: true });
         if (errW) throw errW;
 
-        // 2. Calcular matemáticamente el orden de turnos para este año
+        // 2. Calcular el orden de turnos matemáticamente para el año en curso
         const turnosCalculados = calcularOrdenTurnos(baseWorkers, year);
 
-        // 3. Obtener solicitudes del año para contar semanas pedidas
+        // 3. Obtener solicitudes del año
         const { data: solicitudes, error: errS } = await db
           .from('solicitudes')
           .select('*')
           .eq('ano', year);
         if (errS) throw errS;
 
-        // 4. Obtener si alguien ha cedido el turno voluntariamente en 'turnos'
+        // 4. Obtener renuncias voluntarias de turno
         const { data: turnosFinalizadosDB } = await db
           .from('turnos')
           .select('nombre')
@@ -424,7 +398,7 @@
           conteoPorPersona[nom] = (conteoPorPersona[nom] || 0) + 1;
         });
 
-        // Determinar de quién es el turno: el primer trabajador de la lista que no haya completado 4 semanas ni haya cedido su turno
+        // 5. Determinar turno activo
         let currentTurnWorker = null;
         let listaConEstado = turnosCalculados.map(t => {
           let nom = t.nombre.toLowerCase();
@@ -446,7 +420,7 @@
         const isMyTurn = currentTurnWorker && (currentTurnWorker.nombre.toLowerCase() === currentUser.nombre.toLowerCase() || currentUser.role === 'gestor');
         const misSemanasPedidas = conteoPorPersona[currentUser.nombre.toLowerCase()] || 0;
 
-        // 5. Configurar semanas 1 a 52 (Jun-Sep límite 2, resto 1)
+        // 6. Semanas 1 a 52 (Jun-Sep límite 2, resto 1)
         let semanas = [];
         for (let w = 1; w <= 52; w++) {
           let limite = (w >= 23 && w <= 39) ? 2 : 1;
@@ -488,7 +462,7 @@
       const banner = document.getElementById('turnBanner');
       if (state.isMyTurn && state.totalPedidas < state.maxSemanas) {
         banner.className = 'status-banner my-turn';
-        banner.innerHTML = `<b>¡Es tu turno en ${state.year}!</b> Selecciona tus semanas.`;
+        banner.innerHTML = `<b>¡Es tu turno en ${state.year}!</b> Elige tus semanas.`;
         document.getElementById('fabContainer').style.display = 'flex';
       } else {
         banner.className = 'status-banner';
@@ -538,62 +512,56 @@
       });
     }
 
-async function pedir(year, sem) {
-  // 1. Validar turno
-  if (!globalState.isMyTurn && currentUser.role !== 'gestor') {
-    showErrorModal('No es tu turno de elegir.');
-    return;
-  }
+    async function pedir(year, sem) {
+      if (!globalState.isMyTurn && currentUser.role !== 'gestor') {
+        showErrorModal('No es tu turno de elegir.');
+        return;
+      }
+      if (globalState.totalPedidas >= 4 && currentUser.role !== 'gestor') {
+        showErrorModal('Has alcanzado el límite máximo de 4 semanas.');
+        return;
+      }
 
-  // 2. Bloqueo estricto de 4 semanas (incluso para gestores)
-  if (globalState.totalPedidas >= 4) {
-    showErrorModal(`Ya has seleccionado las 4 semanas máximas permitidas para el año ${year}.`);
-    return;
-  }
+      showLoader(true);
+      try {
+        const { error } = await db.from('solicitudes').insert([{
+          ano: year,
+          semana: sem,
+          nombre: currentUser.nombre
+        }]);
+        if (error) throw error;
 
-  showLoader(true);
-  try {
-    const { error } = await db.from('solicitudes').insert([{
-      ano: year,
-      semana: sem,
-      nombre: currentUser.nombre
-    }]);
+        let completado = (globalState.totalPedidas + 1 >= 4);
+        if (completado) {
+          await db.from('turnos').upsert([{ ano: year, nombre: currentUser.nombre, estado: 'FINALIZADO', turno: 0 }], { onConflict: 'ano,nombre' });
+        }
 
-    if (error) throw error;
+        await cargarDatosAno(year);
 
-    // 3. Al registrar la 4ª semana, finalizar turno automáticamente
-    const esCuartaSemana = (globalState.totalPedidas + 1 === 4);
-    if (esCuartaSemana) {
-      await db.from('turnos').upsert([
-        { ano: year, nombre: currentUser.nombre, estado: 'FINALIZADO', turno: 0 }
-      ], { onConflict: 'ano,nombre' });
+        if (completado) {
+          showCustomModal({
+            icon: 'task_alt',
+            iconType: 'success',
+            title: '¡Cupo Completado!',
+            message: `Has completado tus 4 semanas reglamentarias para ${year}. Tu turno finaliza y pasa automáticamente al siguiente compañero.`,
+            confirmText: 'Entendido'
+          });
+        } else {
+          showSnackbar(`Semana ${sem} asignada (${globalState.totalPedidas + 1}/4)`, 'check_circle');
+        }
+      } catch (err) {
+        showErrorModal(err.message || 'Error al guardar la semana');
+      } finally {
+        showLoader(false);
+      }
     }
 
-    await cargarDatosAno(year);
-
-    if (esCuartaSemana) {
-      showCustomModal({
-        icon: 'task_alt',
-        iconType: 'success',
-        title: '¡Cupo Completado!',
-        message: `Has alcanzado tus 4 semanas reglamentarias para el año ${year}. Tu turno finaliza y pasa al siguiente compañero de la lista.`,
-        confirmText: 'Entendido'
-      });
-    } else {
-      showSnackbar(`Semana ${sem} asignada (${globalState.totalPedidas + 1}/4)`, 'check_circle');
-    }
-  } catch (err) {
-    showErrorModal(err.message || 'Error al guardar la semana');
-  } finally {
-    showLoader(false);
-  }
-}
     function borrarModal(year, sem, nom) {
       showCustomModal({
         icon: 'delete_outline',
         iconType: 'danger',
         title: '¿Eliminar Reserva?',
-        message: `¿Estás seguro de que deseas anular la reserva de <b>${nom}</b> para la semana ${sem} del año ${year}?`,
+        message: `¿Estás seguro de anular la reserva de <b>${nom}</b> en la semana ${sem} del año ${year}?`,
         confirmText: 'Eliminar',
         cancelText: 'Cancelar',
         confirmStyle: 'danger',
@@ -641,7 +609,6 @@ async function pedir(year, sem) {
       });
     }
 
-    // MODAL DE VISUALIZACIÓN DE TURNOS ANUALES
     function verTurnosModal() {
       if (!globalState || !globalState.listaTurnos) return;
       
@@ -654,7 +621,7 @@ async function pedir(year, sem) {
         let badgeHtml = '';
         
         if (t.finalizado) {
-          badgeHtml = `<span class="badge bg-gray"><span class="material-icons" style="font-size:12px; margin-right:2px;">check</span> Finalizado (${t.pedidas}/4)</span>`;
+          badgeHtml = `<span class="badge bg-gray"><span class="material-icons" style="font-size:12px; margin-right:2px;">check</span> 4/4 o Turno Finalizado</span>`;
         } else if (isCurrent) {
           badgeHtml = `<span class="badge bg-green"><span class="material-icons" style="font-size:12px; margin-right:2px;">play_arrow</span> Eligiendo</span>`;
         } else {
@@ -681,24 +648,58 @@ async function pedir(year, sem) {
       });
     }
 
-    function exportarCSV() {
-      if (!globalState || !globalState.rawSolicitudes) return;
-      let rows = [["ANO", "SEMANA", "FECHAS", "NOMBRE", "FECHA_REGISTRO"]];
-      
-      globalState.rawSolicitudes.forEach(s => {
-        let rango = getFechasSemana(s.ano, s.semana).replace(',', ' -');
-        rows.push([s.ano, s.semana, `"${rango}"`, `"${s.nombre}"`, `"${s.fecha_registro}"`]);
-      });
+    // ========================================================
+    // DESCARGA DE EXCEL (FORMATO CSV COMPATIBLE EXCEL)
+    // ========================================================
+    async function descargarExcel() {
+      showLoader(true);
+      try {
+        const { data: solicitudes, error } = await db
+          .from('solicitudes')
+          .select('*')
+          .order('ano', { ascending: true })
+          .order('semana', { ascending: true });
 
-      let csvContent = "data:text/csv;charset=utf-8,\uFEFF" + rows.map(e => e.join(";")).join("\n");
-      let encodedUri = encodeURI(csvContent);
-      let link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `vacaciones_${currentSelectedYear}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      showSnackbar('Archivo CSV descargado con éxito', 'download_done');
+        if (error) throw error;
+        if (!solicitudes || solicitudes.length === 0) {
+          showErrorModal('No hay datos registrados en la base de datos para exportar.');
+          return;
+        }
+
+        // Encabezados para Excel
+        let rows = [["AÑO", "SEMANA", "FECHAS", "TRABAJADOR", "FECHA REGISTRO"]];
+
+        solicitudes.forEach(s => {
+          let rango = getFechasSemana(s.ano, s.semana).replace(',', ' -');
+          let fechaReg = s.fecha_registro ? new Date(s.fecha_registro).toLocaleString('es-ES') : '';
+          rows.push([
+            s.ano,
+            s.semana,
+            `"${rango}"`,
+            `"${s.nombre}"`,
+            `"${fechaReg}"`
+          ]);
+        });
+
+        // Generar CSV con BOM UTF-8 y separador punto y coma (;) para apertura directa en Excel
+        let csvContent = "\uFEFF" + rows.map(e => e.join(";")).join("\r\n");
+        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        let url = URL.createObjectURL(blob);
+
+        let link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `vacaciones_db_${new Date().toISOString().slice(0,10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showSnackbar('Excel descargado correctamente', 'download_done');
+      } catch (err) {
+        showErrorModal(err.message || 'Error al exportar los datos');
+      } finally {
+        showLoader(false);
+      }
     }
 
     function showLoader(visible) {
