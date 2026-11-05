@@ -6,7 +6,6 @@
   <title>Gestión de Vacaciones</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-  <!-- Cliente oficial de Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     :root {
@@ -34,7 +33,7 @@
     .header-left { display: flex; align-items: center; gap: 8px; }
     .title { font-size: 18px; font-weight: 500; }
     
-    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .header-actions { display: flex; align-items: center; gap: 6px; }
     .year-select-container {
       background: rgba(255, 255, 255, 0.2);
       border-radius: 8px; padding: 3px 8px; display: flex; align-items: center;
@@ -158,23 +157,31 @@
     }
     .modal-backdrop.show { opacity: 1; pointer-events: auto; }
     .modal-card {
-      background: #ffffff; width: 90%; max-width: 380px;
-      border-radius: 28px; padding: 24px;
+      background: #ffffff; width: 92%; max-width: 420px;
+      border-radius: 28px; padding: 24px; max-height: 85vh; overflow-y: auto;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
       transform: scale(0.85); transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1);
     }
     .modal-backdrop.show .modal-card { transform: scale(1); }
-    .modal-icon { font-size: 32px; color: var(--primary); margin-bottom: 12px; display: inline-block; }
+    .modal-icon { font-size: 32px; color: var(--primary); margin-bottom: 8px; display: inline-block; }
     .modal-icon.warning { color: #f59e0b; }
     .modal-icon.danger { color: #ef4444; }
     .modal-icon.success { color: #10b981; }
     .modal-title { font-size: 20px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
-    .modal-body { font-size: 14px; line-height: 1.5; color: #475569; margin-bottom: 24px; }
+    .modal-body { font-size: 14px; line-height: 1.5; color: #475569; margin-bottom: 20px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .modal-btn { padding: 10px 18px; border-radius: 20px; font-size: 14px; font-weight: 600; }
     .modal-btn-cancel { background: transparent; color: #475569; }
     .modal-btn-confirm { background: var(--primary); color: #fff; }
     .modal-btn-confirm.danger { background: #ef4444; }
+
+    /* Item de turno en la lista modal */
+    .turn-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
+      background: #f8fafc; border: 1px solid #e2e8f0;
+    }
+    .turn-item.active { background: #ecfdf5; border-color: #6ee7b7; font-weight: 700; }
 
     /* Snackbar */
     .snackbar {
@@ -198,10 +205,10 @@
       
       <div class="form-group">
         <label>Correo Electrónico</label>
-        <input type="email" id="txtEmail" class="form-input" placeholder="ejemplo@gmail.com">
+        <input type="email" id="txtEmail" class="form-input" placeholder="fejanez@eulen.com">
       </div>
       <div class="form-group">
-        <label>PIN (4 dígitos)</label>
+        <label>PIN</label>
         <input type="password" id="txtPin" class="form-input" placeholder="••••" maxlength="8">
       </div>
 
@@ -221,6 +228,10 @@
       <div class="title">Vacaciones</div>
     </div>
     <div class="header-actions">
+      <!-- Botón para ver el orden de los turnos de este año -->
+      <button class="btn-icon-header" onclick="verTurnosModal()" title="Ver orden de turnos">
+        <span class="material-icons">format_list_numbered</span>
+      </button>
       <button id="btnExport" class="btn-icon-header" style="display:none;" onclick="exportarCSV()" title="Descargar Excel / CSV">
         <span class="material-icons">download</span>
       </button>
@@ -267,14 +278,14 @@
 
   <script>
     // ========================================================
-    // PEGA AQUÍ TUS CREDENCIALES DE SUPABASE
+    // TUS CREDENCIALES
     // ========================================================
-    const SUPABASE_URL = "https://lraywbwvsnebxjprzubk.supabase.co";
+    const SUPABASE_URL = "https://lraywbwsnebxjprzubk.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_OciLEsZrh754NORLAQrLbg_l6rQ8s3I";
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let currentSelectedYear = new Date().getFullYear();
+    let currentSelectedYear = 2026;
     let currentUser = null;
     let globalState = null;
 
@@ -292,7 +303,7 @@
     function initYearSelector() {
       const picker = document.getElementById('yearPicker');
       picker.innerHTML = '';
-      const baseYear = new Date().getFullYear();
+      const baseYear = 2026;
       for (let y = baseYear; y <= baseYear + 10; y++) {
         let opt = document.createElement('option');
         opt.value = y;
@@ -353,53 +364,91 @@
       await cargarDatosAno(currentSelectedYear);
     }
 
-    // LÓGICA DE ROTACIÓN Y ESTADO
+    // ========================================================
+    // ALGORITMO DE ROTACIÓN ANUAL MATEMÁTICA
+    // ========================================================
+    function calcularOrdenTurnos(baseWorkers, targetYear) {
+      const N = baseWorkers.length;
+      if (N === 0) return [];
+
+      const baseYear = 2026;
+      // Cada año que avanza, la lista se desplaza 1 puesto: el 1º pasa a ser el último
+      let shift = ((targetYear - baseYear) % N + N) % N;
+      let rotated = [...baseWorkers.slice(shift), ...baseWorkers.slice(0, shift)];
+
+      return rotated.map((w, index) => ({
+        nombre: w.nombre,
+        mail: w.mail,
+        role: w.role,
+        turno: index + 1
+      }));
+    }
+
     async function cargarDatosAno(year) {
       showLoader(true);
       try {
-        // 1. Obtener todos los trabajadores ordenados
+        // 1. Obtener trabajadores ordenados por su ORDEN_INICIAL
         const { data: baseWorkers, error: errW } = await db
           .from('trabajadores')
           .select('*')
           .order('orden_inicial', { ascending: true });
         if (errW) throw errW;
 
-        // 2. Asegurar que existan turnos para este año rotando si es necesario
-        await asegurarTurnosDelAno(baseWorkers, year);
+        // 2. Calcular matemáticamente el orden de turnos para este año
+        const turnosCalculados = calcularOrdenTurnos(baseWorkers, year);
 
-        // 3. Obtener turnos del año
-        const { data: turnos, error: errT } = await db
-          .from('turnos')
-          .select('*')
-          .eq('ano', year)
-          .order('turno', { ascending: true });
-        if (errT) throw errT;
-
-        const currentTurn = turnos.find(t => t.estado === 'PENDIENTE');
-        const turnoNombre = currentTurn ? currentTurn.nombre : 'Ronda completada';
-        const isMyTurn = currentTurn && (currentTurn.nombre.toLowerCase() === currentUser.nombre.toLowerCase() || currentUser.role === 'gestor');
-
-        // 4. Obtener solicitudes del año
+        // 3. Obtener solicitudes del año para contar semanas pedidas
         const { data: solicitudes, error: errS } = await db
           .from('solicitudes')
           .select('*')
           .eq('ano', year);
         if (errS) throw errS;
 
+        // 4. Obtener si alguien ha cedido el turno voluntariamente en 'turnos'
+        const { data: turnosFinalizadosDB } = await db
+          .from('turnos')
+          .select('nombre')
+          .eq('ano', year)
+          .eq('estado', 'FINALIZADO');
+        
+        const finalizadosSet = new Set((turnosFinalizadosDB || []).map(t => t.nombre.toLowerCase()));
+
+        let conteoPorPersona = {};
         let ocupacion = {};
-        let misSemanasPedidas = 0;
         solicitudes.forEach(s => {
           if (!ocupacion[s.semana]) ocupacion[s.semana] = [];
           ocupacion[s.semana].push(s.nombre);
-          if (s.nombre.toLowerCase() === currentUser.nombre.toLowerCase()) {
-            misSemanasPedidas++;
-          }
+          
+          let nom = s.nombre.toLowerCase();
+          conteoPorPersona[nom] = (conteoPorPersona[nom] || 0) + 1;
         });
 
-        // 5. Configurar semanas 1 a 52
+        // Determinar de quién es el turno: el primer trabajador de la lista que no haya completado 4 semanas ni haya cedido su turno
+        let currentTurnWorker = null;
+        let listaConEstado = turnosCalculados.map(t => {
+          let nom = t.nombre.toLowerCase();
+          let pedidas = conteoPorPersona[nom] || 0;
+          let terminado = (pedidas >= 4) || finalizadosSet.has(nom);
+          
+          if (!terminado && !currentTurnWorker) {
+            currentTurnWorker = t;
+          }
+
+          return {
+            ...t,
+            pedidas: pedidas,
+            finalizado: terminado
+          };
+        });
+
+        const turnoNombre = currentTurnWorker ? currentTurnWorker.nombre : 'Ronda completada';
+        const isMyTurn = currentTurnWorker && (currentTurnWorker.nombre.toLowerCase() === currentUser.nombre.toLowerCase() || currentUser.role === 'gestor');
+        const misSemanasPedidas = conteoPorPersona[currentUser.nombre.toLowerCase()] || 0;
+
+        // 5. Configurar semanas 1 a 52 (Jun-Sep límite 2, resto 1)
         let semanas = [];
         for (let w = 1; w <= 52; w++) {
-          let limite = (w >= 23 && w <= 39) ? 2 : 1; // Jun-Sep = 2, resto = 1
+          let limite = (w >= 23 && w <= 39) ? 2 : 1;
           let solicitantes = ocupacion[w] || [];
           semanas.push({
             semana: w,
@@ -417,6 +466,7 @@
           totalPedidas: misSemanasPedidas,
           maxSemanas: 4,
           semanas: semanas,
+          listaTurnos: listaConEstado,
           rawSolicitudes: solicitudes
         };
 
@@ -425,54 +475,6 @@
         showErrorModal(err.message || 'Error cargando datos');
       } finally {
         showLoader(false);
-      }
-    }
-
-    async function asegurarTurnosDelAno(baseWorkers, targetYear) {
-      const { data: todosLosTurnos } = await db.from('turnos').select('*');
-      let turnosPorAno = {};
-      (todosLosTurnos || []).forEach(t => {
-        if (!turnosPorAno[t.ano]) turnosPorAno[t.ano] = [];
-        turnosPorAno[t.ano].push(t);
-      });
-
-      let startYear = new Date().getFullYear();
-      let existingYears = Object.keys(turnosPorAno).map(Number).sort((a,b) => a - b);
-      if (existingYears.length > 0 && existingYears[0] < startYear) {
-        startYear = existingYears[0];
-      }
-
-      // Si no existe el año base, crearlo
-      if (!turnosPorAno[startYear]) {
-        let filas = baseWorkers.map((w, idx) => ({
-          ano: startYear,
-          nombre: w.nombre,
-          turno: idx + 1,
-          estado: 'PENDIENTE'
-        }));
-        await db.from('turnos').insert(filas);
-        turnosPorAno[startYear] = filas;
-      }
-
-      // Rotar secuencialmente: el 1º pasa al último lugar en el siguiente año
-      for (let y = startYear + 1; y <= targetYear; y++) {
-        if (!turnosPorAno[y]) {
-          let prevList = turnosPorAno[y - 1] || [];
-          if (prevList.length > 0) {
-            let sortedPrev = [...prevList].sort((a, b) => a.turno - b.turno);
-            let primero = sortedPrev.shift();
-            sortedPrev.push(primero);
-
-            let filas = sortedPrev.map((w, idx) => ({
-              ano: y,
-              nombre: w.nombre,
-              turno: idx + 1,
-              estado: 'PENDIENTE'
-            }));
-            await db.from('turnos').insert(filas);
-            turnosPorAno[y] = filas;
-          }
-        }
       }
     }
 
@@ -485,7 +487,7 @@
       const banner = document.getElementById('turnBanner');
       if (state.isMyTurn && state.totalPedidas < state.maxSemanas) {
         banner.className = 'status-banner my-turn';
-        banner.innerHTML = `<b>¡Es tu turno en ${state.year}!</b> Elige hasta 4 semanas.`;
+        banner.innerHTML = `<b>¡Es tu turno en ${state.year}!</b> Selecciona tus semanas.`;
         document.getElementById('fabContainer').style.display = 'flex';
       } else {
         banner.className = 'status-banner';
@@ -535,56 +537,56 @@
       });
     }
 
-    async function pedir(year, sem) {
-      if (!globalState.isMyTurn && currentUser.role !== 'gestor') {
-        showErrorModal('No es tu turno de elegir.');
-        return;
-      }
-      if (globalState.totalPedidas >= 4 && currentUser.role !== 'gestor') {
-        showErrorModal('Has alcanzado el límite máximo de 4 semanas.');
-        return;
-      }
+async function pedir(year, sem) {
+  // 1. Validar turno
+  if (!globalState.isMyTurn && currentUser.role !== 'gestor') {
+    showErrorModal('No es tu turno de elegir.');
+    return;
+  }
 
-      showLoader(true);
-      try {
-        const { error } = await db.from('solicitudes').insert([{
-          ano: year,
-          semana: sem,
-          nombre: currentUser.nombre
-        }]);
-        if (error) throw error;
+  // 2. Bloqueo estricto de 4 semanas (incluso para gestores)
+  if (globalState.totalPedidas >= 4) {
+    showErrorModal(`Ya has seleccionado las 4 semanas máximas permitidas para el año ${year}.`);
+    return;
+  }
 
-        // Si completa las 4 semanas, finalizar su turno automáticamente
-        let completado = false;
-        if (globalState.totalPedidas + 1 >= 4) {
-          await db.from('turnos')
-            .update({ estado: 'FINALIZADO' })
-            .eq('ano', year)
-            .ilike('nombre', currentUser.nombre)
-            .eq('estado', 'PENDIENTE');
-          completado = true;
-        }
+  showLoader(true);
+  try {
+    const { error } = await db.from('solicitudes').insert([{
+      ano: year,
+      semana: sem,
+      nombre: currentUser.nombre
+    }]);
 
-        await cargarDatosAno(year);
+    if (error) throw error;
 
-        if (completado) {
-          showCustomModal({
-            icon: 'task_alt',
-            iconType: 'success',
-            title: '¡Ronda Completada!',
-            message: 'Has seleccionado tus 4 semanas. Tu turno finaliza con éxito y pasa automáticamente al siguiente compañero.',
-            confirmText: 'Entendido'
-          });
-        } else {
-          showSnackbar('Semana ' + sem + ' asignada correctamente', 'check_circle');
-        }
-      } catch (err) {
-        showErrorModal(err.message || 'Error al guardar la semana');
-      } finally {
-        showLoader(false);
-      }
+    // 3. Al registrar la 4ª semana, finalizar turno automáticamente
+    const esCuartaSemana = (globalState.totalPedidas + 1 === 4);
+    if (esCuartaSemana) {
+      await db.from('turnos').upsert([
+        { ano: year, nombre: currentUser.nombre, estado: 'FINALIZADO', turno: 0 }
+      ], { onConflict: 'ano,nombre' });
     }
 
+    await cargarDatosAno(year);
+
+    if (esCuartaSemana) {
+      showCustomModal({
+        icon: 'task_alt',
+        iconType: 'success',
+        title: '¡Cupo Completado!',
+        message: `Has alcanzado tus 4 semanas reglamentarias para el año ${year}. Tu turno finaliza y pasa al siguiente compañero de la lista.`,
+        confirmText: 'Entendido'
+      });
+    } else {
+      showSnackbar(`Semana ${sem} asignada (${globalState.totalPedidas + 1}/4)`, 'check_circle');
+    }
+  } catch (err) {
+    showErrorModal(err.message || 'Error al guardar la semana');
+  } finally {
+    showLoader(false);
+  }
+}
     function borrarModal(year, sem, nom) {
       showCustomModal({
         icon: 'delete_outline',
@@ -627,11 +629,7 @@
           showLoader(true);
           try {
             let targetUser = (currentUser.role === 'gestor') ? globalState.turnoDe : currentUser.nombre;
-            await db.from('turnos')
-              .update({ estado: 'FINALIZADO' })
-              .eq('ano', currentSelectedYear)
-              .ilike('nombre', targetUser)
-              .eq('estado', 'PENDIENTE');
+            await db.from('turnos').upsert([{ ano: currentSelectedYear, nombre: targetUser, estado: 'FINALIZADO', turno: 0 }], { onConflict: 'ano,nombre' });
             await cargarDatosAno(currentSelectedYear);
           } catch (err) {
             showErrorModal(err.message || 'Error al ceder turno');
@@ -642,7 +640,46 @@
       });
     }
 
-    // EXPORTACIÓN A EXCEL / CSV PARA EL GESTOR
+    // MODAL DE VISUALIZACIÓN DE TURNOS ANUALES
+    function verTurnosModal() {
+      if (!globalState || !globalState.listaTurnos) return;
+      
+      let html = `<p style="font-size:13px; color:var(--text-sec); margin-top:-6px; margin-bottom:14px;">
+        Orden oficial para el año <b>${globalState.year}</b>. El que empezó primero el año anterior pasa al último puesto:
+      </p>`;
+
+      globalState.listaTurnos.forEach(t => {
+        let isCurrent = (t.nombre === globalState.turnoDe);
+        let badgeHtml = '';
+        
+        if (t.finalizado) {
+          badgeHtml = `<span class="badge bg-gray"><span class="material-icons" style="font-size:12px; margin-right:2px;">check</span> Finalizado (${t.pedidas}/4)</span>`;
+        } else if (isCurrent) {
+          badgeHtml = `<span class="badge bg-green"><span class="material-icons" style="font-size:12px; margin-right:2px;">play_arrow</span> Eligiendo</span>`;
+        } else {
+          badgeHtml = `<span class="badge bg-gray">En espera (${t.pedidas}/4)</span>`;
+        }
+
+        html += `
+          <div class="turn-item ${isCurrent ? 'active' : ''}">
+            <div>
+              <span style="font-size:12px; color:var(--text-sec); margin-right:6px;">#${t.turno}</span>
+              <b>${t.nombre}</b>
+            </div>
+            <div>${badgeHtml}</div>
+          </div>
+        `;
+      });
+
+      showCustomModal({
+        icon: 'format_list_numbered',
+        iconType: '',
+        title: `Turnos ${globalState.year}`,
+        message: html,
+        confirmText: 'Cerrar'
+      });
+    }
+
     function exportarCSV() {
       if (!globalState || !globalState.rawSolicitudes) return;
       let rows = [["ANO", "SEMANA", "FECHAS", "NOMBRE", "FECHA_REGISTRO"]];
