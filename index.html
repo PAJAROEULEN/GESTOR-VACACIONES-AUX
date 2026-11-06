@@ -47,6 +47,26 @@
     }
     .btn-icon-header:hover { background: rgba(255,255,255,0.18); }
 
+    /* PESTAÑAS DE NAVEGACIÓN */
+    .tab-nav {
+      display: flex; background: #ffffff;
+      border-bottom: 1px solid #cbd5e1;
+      position: sticky; top: 50px; z-index: 95;
+    }
+    .tab-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 12px 14px; border: none; background: transparent;
+      font-size: 13.5px; font-weight: 500; color: var(--text-sec);
+      border-bottom: 3px solid transparent; border-radius: 0; cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom: 3px solid var(--primary);
+      font-weight: 700;
+      background: #f8fafc;
+    }
+
     .status-banner {
       background: #e2e8f0; color: #334155; padding: 10px 16px;
       font-size: 13.5px; text-align: center; border-bottom: 1px solid #cbd5e1;
@@ -82,6 +102,8 @@
     .bg-green { background: #dcfce7; color: #15803d; }
     .bg-red { background: #fee2e2; color: #b91c1c; }
     .bg-gray { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .bg-blue { background: #e0f2fe; color: #0369a1; }
+    .bg-amber { background: #fef3c7; color: #92400e; }
 
     button {
       border: none; border-radius: 20px; padding: 8px 16px;
@@ -105,6 +127,45 @@
       font-size: 14px; width: 100%; max-width: 450px;
       display: flex; justify-content: center; align-items: center; gap: 8px;
     }
+
+    /* ESTILOS DEL ACORDEÓN ANUAL */
+    .accordion-item {
+      background: var(--card); border-radius: 12px;
+      border: 1px solid #e2e8f0; margin-bottom: 10px;
+      overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .accordion-header {
+      width: 100%; display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 16px; background: #ffffff; border: none; border-radius: 0;
+      text-align: left; font-size: 15px; font-weight: 600; color: var(--text);
+      cursor: pointer; transition: background 0.15s;
+    }
+    .accordion-header:hover { background: #f8fafc; }
+    .accordion-icon {
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      color: var(--text-sec);
+    }
+    .accordion-icon.rotated { transform: rotate(180deg); color: var(--primary); }
+    .accordion-content {
+      display: none; padding: 12px 16px;
+      background: #f8fafc; border-top: 1px solid #e2e8f0;
+    }
+    .accordion-content.open { display: block; }
+    
+    .worker-row-order {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 6px; font-size: 13.5px;
+    }
+    .worker-row-order:last-child { margin-bottom: 0; }
+    .worker-rank {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: #e2e8f0; color: #334155; font-size: 12px; font-weight: 700;
+      margin-right: 8px;
+    }
+    .worker-rank.first { background: #dcfce7; color: #166534; }
+    .worker-rank.last { background: #fee2e2; color: #991b1b; }
 
     /* Pantalla Login */
     #loginScreen {
@@ -171,13 +232,6 @@
     .modal-btn-confirm { background: var(--primary); color: #fff; }
     .modal-btn-confirm.danger { background: #ef4444; }
 
-    .turn-item {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 12px; margin-bottom: 8px; border-radius: 12px;
-      background: #f8fafc; border: 1px solid #e2e8f0;
-    }
-    .turn-item.active { background: #ecfdf5; border-color: #6ee7b7; font-weight: 700; }
-
     /* Snackbar */
     .snackbar {
       position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
@@ -224,35 +278,54 @@
       <div id="yearDisplay" class="year-badge">----</div>
     </div>
     <div class="header-actions">
-      <!-- Botón de descarga de Excel -->
       <button class="btn-icon-header" onclick="descargarExcel()" title="Descargar datos en Excel (CSV)">
         <span class="material-icons">table_view</span>
       </button>
-      <!-- Botón de lista de turnos -->
-      <button class="btn-icon-header" onclick="verTurnosModal()" title="Ver orden de turnos">
-        <span class="material-icons">format_list_numbered</span>
-      </button>
-      <!-- Cerrar sesión -->
       <button class="btn-icon-header" onclick="cerrarSesion()" title="Cerrar sesión">
         <span class="material-icons">logout</span>
       </button>
     </div>
   </header>
 
-  <div id="turnBanner" class="status-banner"></div>
+  <!-- PESTAÑAS PRINCIPALES -->
+  <nav class="tab-nav">
+    <button id="tabBtnSemanas" class="tab-btn active" onclick="cambiarPestana('semanas')">
+      <span class="material-icons">event</span>
+      <span>Semanas</span>
+    </button>
+    <button id="tabBtnOrden" class="tab-btn" onclick="cambiarPestana('orden')">
+      <span class="material-icons">format_list_numbered</span>
+      <span>Orden por Años</span>
+    </button>
+  </nav>
 
-  <div class="counter-bar">
-    <span id="userNameDisplay">Trabajador</span>
-    <span id="counterPill" class="counter-pill">0 / 4 semanas</span>
+  <!-- VISTA 1: CALENDARIO DE SEMANAS (AÑO ACTUAL) -->
+  <div id="viewSemanas">
+    <div id="turnBanner" class="status-banner"></div>
+
+    <div class="counter-bar">
+      <span id="userNameDisplay">Trabajador</span>
+      <span id="counterPill" class="counter-pill">0 / 4 semanas</span>
+    </div>
+
+    <div class="container" id="appContent"></div>
+
+    <div class="fab-container" id="fabContainer" style="display:none;">
+      <button class="fab-btn" onclick="pasarTurnoModal()">
+        <span class="material-icons">forward</span>
+        Ceder turno voluntariamente
+      </button>
+    </div>
   </div>
 
-  <div class="container" id="appContent"></div>
-
-  <div class="fab-container" id="fabContainer" style="display:none;">
-    <button class="fab-btn" onclick="pasarTurnoModal()">
-      <span class="material-icons">forward</span>
-      Ceder turno voluntariamente
-    </button>
+  <!-- VISTA 2: ORDEN ANUAL POR ACORDEÓN -->
+  <div id="viewOrden" style="display:none;">
+    <div class="container" style="padding-top: 16px;">
+      <p style="font-size: 13.5px; color: var(--text-sec); margin: 0 0 16px 4px; line-height: 1.4;">
+        Rotación cíclica oficial: <b>quien empieza primero un año pasa a ser el último en el siguiente</b>. Haz clic en cada año para consultar el orden:
+      </p>
+      <div id="accordionContainer"></div>
+    </div>
   </div>
 
   <!-- MODAL MATERIAL 3 -->
@@ -280,10 +353,10 @@
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Año actual automático del sistema
     const currentSelectedYear = new Date().getFullYear();
     let currentUser = null;
     let globalState = null;
+    let baseWorkersCache = [];
 
     window.onload = function() {
       document.getElementById('yearDisplay').innerText = currentSelectedYear;
@@ -296,6 +369,26 @@
         iniciarSesion();
       }
     };
+
+    function cambiarPestana(pestana) {
+      const btnSemanas = document.getElementById('tabBtnSemanas');
+      const btnOrden = document.getElementById('tabBtnOrden');
+      const viewSemanas = document.getElementById('viewSemanas');
+      const viewOrden = document.getElementById('viewOrden');
+
+      if (pestana === 'semanas') {
+        btnSemanas.classList.add('active');
+        btnOrden.classList.remove('active');
+        viewSemanas.style.display = 'block';
+        viewOrden.style.display = 'none';
+      } else {
+        btnSemanas.classList.remove('active');
+        btnOrden.classList.add('active');
+        viewSemanas.style.display = 'none';
+        viewOrden.style.display = 'block';
+        renderizarAcordeonOrden();
+      }
+    }
 
     async function iniciarSesion() {
       const email = document.getElementById('txtEmail').value.trim().toLowerCase();
@@ -369,8 +462,10 @@
           .order('orden_inicial', { ascending: true });
         if (errW) throw errW;
 
+        baseWorkersCache = baseWorkers || [];
+
         // 2. Calcular el orden de turnos matemáticamente para el año en curso
-        const turnosCalculados = calcularOrdenTurnos(baseWorkers, year);
+        const turnosCalculados = calcularOrdenTurnos(baseWorkersCache, year);
 
         // 3. Obtener solicitudes del año
         const { data: solicitudes, error: errS } = await db
@@ -512,6 +607,75 @@
       });
     }
 
+    // ========================================================
+    // RENDERIZADO DEL ACORDEÓN DE TURNOS
+    // ========================================================
+    function renderizarAcordeonOrden() {
+      const container = document.getElementById('accordionContainer');
+      if (!baseWorkersCache || baseWorkersCache.length === 0) {
+        container.innerHTML = `<p style="color:var(--text-sec); text-align:center;">No hay trabajadores cargados.</p>`;
+        return;
+      }
+
+      container.innerHTML = '';
+      const baseYear = 2026;
+      const totalWorkers = baseWorkersCache.length;
+
+      for (let y = baseYear; y <= baseYear + 9; y++) {
+        const turnosAno = calcularOrdenTurnos(baseWorkersCache, y);
+        const esAnoActual = (y === currentSelectedYear);
+
+        let rowsHtml = '';
+        turnosAno.forEach((w, idx) => {
+          let badgeRol = '';
+          if (idx === 0) {
+            badgeRol = `<span class="badge bg-green">1º en elegir</span>`;
+          } else if (idx === totalWorkers - 1) {
+            badgeRol = `<span class="badge bg-amber">Último</span>`;
+          }
+
+          rowsHtml += `
+            <div class="worker-row-order">
+              <div style="display:flex; align-items:center;">
+                <span class="worker-rank ${idx === 0 ? 'first' : (idx === totalWorkers - 1 ? 'last' : '')}">${w.turno}</span>
+                <span style="font-weight: 500;">${w.nombre}</span>
+              </div>
+              <div>${badgeRol}</div>
+            </div>
+          `;
+        });
+
+        const itemHtml = `
+          <div class="accordion-item">
+            <button class="accordion-header" onclick="toggleAccordion('acc-${y}')">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span>Año <b>${y}</b></span>
+                ${esAnoActual ? '<span class="badge bg-blue" style="margin:0;">Actual</span>' : ''}
+              </div>
+              <span class="material-icons accordion-icon ${esAnoActual ? 'rotated' : ''}" id="icon-acc-${y}">expand_more</span>
+            </button>
+            <div class="accordion-content ${esAnoActual ? 'open' : ''}" id="acc-${y}">
+              ${rowsHtml}
+            </div>
+          </div>
+        `;
+
+        container.innerHTML += itemHtml;
+      }
+    }
+
+    function toggleAccordion(id) {
+      const content = document.getElementById(id);
+      const icon = document.getElementById('icon-' + id);
+      if (content.classList.contains('open')) {
+        content.classList.remove('open');
+        icon.classList.remove('rotated');
+      } else {
+        content.classList.add('open');
+        icon.classList.add('rotated');
+      }
+    }
+
     async function pedir(year, sem) {
       if (!globalState.isMyTurn && currentUser.role !== 'gestor') {
         showErrorModal('No es tu turno de elegir.');
@@ -609,48 +773,6 @@
       });
     }
 
-    function verTurnosModal() {
-      if (!globalState || !globalState.listaTurnos) return;
-      
-      let html = `<p style="font-size:13px; color:var(--text-sec); margin-top:-6px; margin-bottom:14px;">
-        Orden oficial para el año <b>${globalState.year}</b>. El que empezó primero el año anterior pasa al último puesto:
-      </p>`;
-
-      globalState.listaTurnos.forEach(t => {
-        let isCurrent = (t.nombre === globalState.turnoDe);
-        let badgeHtml = '';
-        
-        if (t.finalizado) {
-          badgeHtml = `<span class="badge bg-gray"><span class="material-icons" style="font-size:12px; margin-right:2px;">check</span> 4/4 o Turno Finalizado</span>`;
-        } else if (isCurrent) {
-          badgeHtml = `<span class="badge bg-green"><span class="material-icons" style="font-size:12px; margin-right:2px;">play_arrow</span> Eligiendo</span>`;
-        } else {
-          badgeHtml = `<span class="badge bg-gray">En espera (${t.pedidas}/4)</span>`;
-        }
-
-        html += `
-          <div class="turn-item ${isCurrent ? 'active' : ''}">
-            <div>
-              <span style="font-size:12px; color:var(--text-sec); margin-right:6px;">#${t.turno}</span>
-              <b>${t.nombre}</b>
-            </div>
-            <div>${badgeHtml}</div>
-          </div>
-        `;
-      });
-
-      showCustomModal({
-        icon: 'format_list_numbered',
-        iconType: '',
-        title: `Turnos ${globalState.year}`,
-        message: html,
-        confirmText: 'Cerrar'
-      });
-    }
-
-    // ========================================================
-    // DESCARGA DE EXCEL (FORMATO CSV COMPATIBLE EXCEL)
-    // ========================================================
     async function descargarExcel() {
       showLoader(true);
       try {
@@ -666,7 +788,6 @@
           return;
         }
 
-        // Encabezados para Excel
         let rows = [["AÑO", "SEMANA", "FECHAS", "TRABAJADOR", "FECHA REGISTRO"]];
 
         solicitudes.forEach(s => {
@@ -681,7 +802,6 @@
           ]);
         });
 
-        // Generar CSV con BOM UTF-8 y separador punto y coma (;) para apertura directa en Excel
         let csvContent = "\uFEFF" + rows.map(e => e.join(";")).join("\r\n");
         let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         let url = URL.createObjectURL(blob);
