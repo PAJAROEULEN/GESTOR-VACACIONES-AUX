@@ -128,7 +128,7 @@
       display: flex; justify-content: center; align-items: center; gap: 8px;
     }
 
-    /* ESTILOS DEL ACORDEÓN ANUAL */
+    /* ACORDEÓN ANUAL */
     .accordion-item {
       background: var(--card); border-radius: 12px;
       border: 1px solid #e2e8f0; margin-bottom: 10px;
@@ -313,7 +313,7 @@
     <div class="fab-container" id="fabContainer" style="display:none;">
       <button class="fab-btn" onclick="pasarTurnoModal()">
         <span class="material-icons">forward</span>
-        Ceder turno voluntariamente
+        Ceder turno en esta ronda
       </button>
     </div>
   </div>
@@ -322,7 +322,8 @@
   <div id="viewOrden" style="display:none;">
     <div class="container" style="padding-top: 16px;">
       <p style="font-size: 13.5px; color: var(--text-sec); margin: 0 0 16px 4px; line-height: 1.4;">
-        Rotación cíclica oficial: <b>quien empieza primero un año pasa a ser el último en el siguiente</b>. Haz clic en cada año para consultar el orden:
+        Rotación cíclica oficial: <b>quien empieza primero pasa al último puesto el siguiente año</b>.<br>
+        La elección se realiza en <b>dos rondas consecutivas de 2 semanas cada una</b> (1º al último en Ronda 1, y nuevamente 1º al último en Ronda 2).
       </p>
       <div id="accordionContainer"></div>
     </div>
@@ -349,7 +350,7 @@
     // CONFIGURACIÓN Y CREDENCIALES
     // ========================================================
     const SUPABASE_URL = "https://lraywbwvsnebxjprzubk.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_OciLEsZrh754NORLAQrLbg_l6rQ8s3I";
+    const SUPABASE_ANON_KEY = "sb_publishable_OcIlEsZrh754NORLAQrLbg_l6rQ8s3I";
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -433,8 +434,6 @@
 
     // ========================================================
     // ALGORITMO DE ROTACIÓN ANUAL MATEMÁTICA
-    // Año 2026: w1, w2, w3...
-    // Año 2027: w2, w3..., w1 (el primero pasa al final)
     // ========================================================
     function calcularOrdenTurnos(baseWorkers, targetYear) {
       const N = baseWorkers.length;
@@ -464,24 +463,26 @@
 
         baseWorkersCache = baseWorkers || [];
 
-        // 2. Calcular el orden de turnos matemáticamente para el año en curso
+        // 2. Orden de turnos para este año
         const turnosCalculados = calcularOrdenTurnos(baseWorkersCache, year);
 
-        // 3. Obtener solicitudes del año
+        // 3. Solicitudes del año
         const { data: solicitudes, error: errS } = await db
           .from('solicitudes')
           .select('*')
           .eq('ano', year);
         if (errS) throw errS;
 
-        // 4. Obtener renuncias voluntarias de turno
-        const { data: turnosFinalizadosDB } = await db
+        // 4. Estados de renuncias voluntarias en 'turnos' (PASO_R1 o FINALIZADO)
+        const { data: turnosDB } = await db
           .from('turnos')
-          .select('nombre')
-          .eq('ano', year)
-          .eq('estado', 'FINALIZADO');
+          .select('nombre, estado')
+          .eq('ano', year);
         
-        const finalizadosSet = new Set((turnosFinalizadosDB || []).map(t => t.nombre.toLowerCase()));
+        const turnosMap = {};
+        (turnosDB || []).forEach(t => {
+          turnosMap[t.nombre.toLowerCase()] = t.estado;
+        });
 
         let conteoPorPersona = {};
         let ocupacion = {};
@@ -493,29 +494,47 @@
           conteoPorPersona[nom] = (conteoPorPersona[nom] || 0) + 1;
         });
 
-        // 5. Determinar turno activo
+        // ========================================================
+        // DETERMINAR DE QUIÉN ES EL TURNO (LÓGICA DE 2 RONDAS)
+        // ========================================================
         let currentTurnWorker = null;
-        let listaConEstado = turnosCalculados.map(t => {
+        let rondaActual = 1;
+
+        // FASE 1: ¿Alguien tiene pendiente su 1ª ronda (2 semanas)?
+        for (let t of turnosCalculados) {
           let nom = t.nombre.toLowerCase();
           let pedidas = conteoPorPersona[nom] || 0;
-          let terminado = (pedidas >= 4) || finalizadosSet.has(nom);
+          let estado = turnosMap[nom];
+          let r1_hecha = (pedidas >= 2) || (estado === 'PASO_R1') || (estado === 'FINALIZADO');
           
-          if (!terminado && !currentTurnWorker) {
+          if (!r1_hecha) {
             currentTurnWorker = t;
+            rondaActual = 1;
+            break;
           }
+        }
 
-          return {
-            ...t,
-            pedidas: pedidas,
-            finalizado: terminado
-          };
-        });
+        // FASE 2: Si todos completaron la Ronda 1, buscar quién tiene pendiente la Ronda 2 (hasta 4 semanas)
+        if (!currentTurnWorker) {
+          rondaActual = 2;
+          for (let t of turnosCalculados) {
+            let nom = t.nombre.toLowerCase();
+            let pedidas = conteoPorPersona[nom] || 0;
+            let estado = turnosMap[nom];
+            let r2_hecha = (pedidas >= 4) || (estado === 'FINALIZADO');
+            
+            if (!r2_hecha) {
+              currentTurnWorker = t;
+              break;
+            }
+          }
+        }
 
         const turnoNombre = currentTurnWorker ? currentTurnWorker.nombre : 'Ronda completada';
         const isMyTurn = currentTurnWorker && (currentTurnWorker.nombre.toLowerCase() === currentUser.nombre.toLowerCase() || currentUser.role === 'gestor');
         const misSemanasPedidas = conteoPorPersona[currentUser.nombre.toLowerCase()] || 0;
 
-        // 6. Semanas 1 a 52 (Jun-Sep límite 2, resto 1)
+        // Semanas 1 a 52 (Jun-Sep límite 2, resto 1)
         let semanas = [];
         for (let w = 1; w <= 52; w++) {
           let limite = (w >= 23 && w <= 39) ? 2 : 1;
@@ -533,10 +552,9 @@
           year: year,
           turnoDe: turnoNombre,
           isMyTurn: !!isMyTurn,
+          rondaActual: rondaActual,
           totalPedidas: misSemanasPedidas,
-          maxSemanas: 4,
           semanas: semanas,
-          listaTurnos: listaConEstado,
           rawSolicitudes: solicitudes
         };
 
@@ -551,20 +569,31 @@
     function renderApp(state) {
       document.getElementById('userNameDisplay').innerText = currentUser.nombre + (currentUser.role === 'gestor' ? ' (Gestor)' : '');
       const pill = document.getElementById('counterPill');
-      pill.innerText = `${state.totalPedidas} / ${state.maxSemanas} semanas`;
-      pill.className = state.totalPedidas >= state.maxSemanas ? 'counter-pill limit-reached' : 'counter-pill';
+      pill.innerText = `${state.totalPedidas} / 4 semanas`;
+      pill.className = state.totalPedidas >= 4 ? 'counter-pill limit-reached' : 'counter-pill';
 
       const banner = document.getElementById('turnBanner');
-      if (state.isMyTurn && state.totalPedidas < state.maxSemanas) {
+      const rondaTxt = state.rondaActual === 1 ? '1ª Ronda (2 semanas)' : '2ª Ronda (completar 4 sem.)';
+
+      if (!state.turnoDe || state.turnoDe === 'Ronda completada') {
+        banner.className = 'status-banner';
+        banner.innerHTML = `Todas las rondas del año <b>${state.year}</b> han finalizado.`;
+        document.getElementById('fabContainer').style.display = 'none';
+      } else if (state.isMyTurn) {
         banner.className = 'status-banner my-turn';
-        banner.innerHTML = `<b>¡Es tu turno en ${state.year}!</b> Elige tus semanas.`;
+        if (state.rondaActual === 1) {
+          banner.innerHTML = `<b>¡Es tu turno (1ª Ronda)!</b> Elige tus 2 primeras semanas (${state.totalPedidas}/2).`;
+        } else {
+          banner.innerHTML = `<b>¡Es tu turno (2ª Ronda)!</b> Completa tus 2 semanas restantes (${state.totalPedidas}/4).`;
+        }
         document.getElementById('fabContainer').style.display = 'flex';
       } else {
         banner.className = 'status-banner';
-        banner.innerHTML = `Turno actual (${state.year}): <b>${state.turnoDe}</b>`;
+        banner.innerHTML = `Turno actual [<b>${rondaTxt}</b>]: <b>${state.turnoDe}</b>`;
         document.getElementById('fabContainer').style.display = 'none';
       }
 
+      const maxPermitidoEnRonda = (state.rondaActual === 1) ? 2 : 4;
       const content = document.getElementById('appContent');
       content.innerHTML = '';
 
@@ -586,8 +615,8 @@
         if (state.isMyTurn || currentUser.role === 'gestor') {
           if (s.yoLaTengo) {
             btnAction = `<span class="material-icons" style="color:#10b981; font-size:28px;">check_circle</span>`;
-          } else if (state.totalPedidas >= state.maxSemanas && currentUser.role !== 'gestor') {
-            btnAction = `<button class="btn-disabled" disabled>Límite 4</button>`;
+          } else if (state.totalPedidas >= maxPermitidoEnRonda && currentUser.role !== 'gestor') {
+            btnAction = `<button class="btn-disabled" disabled>${state.rondaActual === 1 ? 'Ronda 1 comp. (2/2)' : 'Límite 4'}</button>`;
           } else if (s.disponible || currentUser.role === 'gestor') {
             btnAction = `<button class="btn-primary" onclick="pedir(${state.year}, ${s.semana})">Elegir</button>`;
           }
@@ -607,9 +636,6 @@
       });
     }
 
-    // ========================================================
-    // RENDERIZADO DEL ACORDEÓN DE TURNOS
-    // ========================================================
     function renderizarAcordeonOrden() {
       const container = document.getElementById('accordionContainer');
       if (!baseWorkersCache || baseWorkersCache.length === 0) {
@@ -655,6 +681,9 @@
               <span class="material-icons accordion-icon ${esAnoActual ? 'rotated' : ''}" id="icon-acc-${y}">expand_more</span>
             </button>
             <div class="accordion-content ${esAnoActual ? 'open' : ''}" id="acc-${y}">
+              <div style="font-size:12.5px; color:var(--text-sec); margin-bottom:10px;">
+                Orden para 1ª Ronda (2 semanas) y 2ª Ronda (2 semanas):
+              </div>
               ${rowsHtml}
             </div>
           </div>
@@ -681,8 +710,12 @@
         showErrorModal('No es tu turno de elegir.');
         return;
       }
-      if (globalState.totalPedidas >= 4 && currentUser.role !== 'gestor') {
-        showErrorModal('Has alcanzado el límite máximo de 4 semanas.');
+
+      const maxPermitidoEnRonda = (globalState.rondaActual === 1) ? 2 : 4;
+      if (globalState.totalPedidas >= maxPermitidoEnRonda && currentUser.role !== 'gestor') {
+        showErrorModal(globalState.rondaActual === 1 
+          ? 'En la 1ª ronda solo puedes elegir 2 semanas. El turno pasa al siguiente compañero.' 
+          : 'Has alcanzado el límite máximo de 4 semanas.');
         return;
       }
 
@@ -695,23 +728,34 @@
         }]);
         if (error) throw error;
 
-        let completado = (globalState.totalPedidas + 1 >= 4);
-        if (completado) {
+        const nuevasPedidas = globalState.totalPedidas + 1;
+        const completoRonda1 = (globalState.rondaActual === 1 && nuevasPedidas === 2);
+        const completoRonda2 = (nuevasPedidas >= 4);
+
+        if (completoRonda2) {
           await db.from('turnos').upsert([{ ano: year, nombre: currentUser.nombre, estado: 'FINALIZADO', turno: 0 }], { onConflict: 'ano,nombre' });
         }
 
         await cargarDatosAno(year);
 
-        if (completado) {
+        if (completoRonda1) {
+          showCustomModal({
+            icon: 'swap_horiz',
+            iconType: 'success',
+            title: '¡1ª Ronda Completada!',
+            message: `Has seleccionado tus 2 semanas de la primera ronda. El turno pasa al siguiente compañero.<br><br>En la <b>2ª ronda</b> volverá a llegarte el turno para elegir tus 2 semanas restantes.`,
+            confirmText: 'Entendido'
+          });
+        } else if (completoRonda2) {
           showCustomModal({
             icon: 'task_alt',
             iconType: 'success',
-            title: '¡Cupo Completado!',
-            message: `Has completado tus 4 semanas reglamentarias para ${year}. Tu turno finaliza y pasa automáticamente al siguiente compañero.`,
-            confirmText: 'Entendido'
+            title: '¡Cupo Anual Completado!',
+            message: `Has completado las 4 semanas máximas de vacaciones para el año ${year}.`,
+            confirmText: 'Aceptar'
           });
         } else {
-          showSnackbar(`Semana ${sem} asignada (${globalState.totalPedidas + 1}/4)`, 'check_circle');
+          showSnackbar(`Semana ${sem} seleccionada correctamente`, 'check_circle');
         }
       } catch (err) {
         showErrorModal(err.message || 'Error al guardar la semana');
@@ -750,11 +794,17 @@
     }
 
     function pasarTurnoModal() {
+      const esRonda1 = (globalState.rondaActual === 1);
+      const title = esRonda1 ? '¿Ceder turno en 1ª Ronda?' : '¿Finalizar turnos del año?';
+      const msg = esRonda1 
+        ? `Has solicitado <b>${globalState.totalPedidas}</b> de 2 semanas en esta ronda. Si continúas, tu turno pasará al siguiente compañero y podrás elegir las restantes en la 2ª ronda.`
+        : `Has solicitado <b>${globalState.totalPedidas}</b> de 4 semanas. Si continúas, no podrás solicitar más semanas en ${currentSelectedYear}.`;
+
       showCustomModal({
         icon: 'swap_horiz',
         iconType: 'warning',
-        title: '¿Ceder Turno?',
-        message: `Aún no has solicitado tus 4 semanas. Si continúas, tu turno finalizará ahora y pasará al siguiente compañero.`,
+        title: title,
+        message: msg,
         confirmText: 'Ceder Turno',
         cancelText: 'Seguir eligiendo',
         confirmStyle: 'primary',
@@ -762,7 +812,8 @@
           showLoader(true);
           try {
             let targetUser = (currentUser.role === 'gestor') ? globalState.turnoDe : currentUser.nombre;
-            await db.from('turnos').upsert([{ ano: currentSelectedYear, nombre: targetUser, estado: 'FINALIZADO', turno: 0 }], { onConflict: 'ano,nombre' });
+            let estadoAsignar = esRonda1 ? 'PASO_R1' : 'FINALIZADO';
+            await db.from('turnos').upsert([{ ano: currentSelectedYear, nombre: targetUser, estado: estadoAsignar, turno: 0 }], { onConflict: 'ano,nombre' });
             await cargarDatosAno(currentSelectedYear);
           } catch (err) {
             showErrorModal(err.message || 'Error al ceder turno');
