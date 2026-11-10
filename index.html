@@ -349,9 +349,12 @@
     // ========================================================
     // CONFIGURACIÓN Y CREDENCIALES
     // ========================================================
-    const SUPABASE_URL = "https://lraywbwvsnebxjprzubk.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_OcIlEsZrh754NORLAQrLbg_l6rQ8s3I";
     
+    const SUPABASE_URL = "https://lraywbwvsnebxjprzubk.supabase.co";
+
+    // Pega aquí la clave anon public completa que empieza por eyJ...
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyYXl3Ynd2c25lYnhqcHJ6dWJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3...";
+
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Año activo para la campaña de vacaciones (2027)
