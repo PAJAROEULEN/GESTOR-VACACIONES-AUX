@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Gestión de Vacaciones</title>
+  <title>Gestión de Vacaciones 2027</title>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -204,7 +204,7 @@
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    /* Modals Material 3 */
+    /* Modals */
     .modal-backdrop {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(3px);
@@ -275,7 +275,7 @@
     <div class="header-left">
       <span class="material-icons">beach_access</span>
       <div class="title">Vacaciones</div>
-      <div id="yearDisplay" class="year-badge">----</div>
+      <div id="yearDisplay" class="year-badge">2027</div>
     </div>
     <div class="header-actions">
       <button class="btn-icon-header" onclick="descargarExcel()" title="Descargar datos en Excel (CSV)">
@@ -299,7 +299,7 @@
     </button>
   </nav>
 
-  <!-- VISTA 1: CALENDARIO DE SEMANAS (AÑO ACTUAL) -->
+  <!-- VISTA 1: CALENDARIO DE SEMANAS (AÑO ACTIVO 2027) -->
   <div id="viewSemanas">
     <div id="turnBanner" class="status-banner"></div>
 
@@ -354,7 +354,8 @@
     
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    const currentSelectedYear = new Date().getFullYear();
+    // Año activo para la campaña de vacaciones (2027)
+    const currentSelectedYear = 2027;
     let currentUser = null;
     let globalState = null;
     let baseWorkersCache = [];
@@ -434,12 +435,14 @@
 
     // ========================================================
     // ALGORITMO DE ROTACIÓN ANUAL MATEMÁTICA
+    // Año base = 2027 (aplica orden_inicial tal cual)
+    // Año 2028: w2, w3..., w1 (el primero pasa al final)
     // ========================================================
     function calcularOrdenTurnos(baseWorkers, targetYear) {
       const N = baseWorkers.length;
       if (N === 0) return [];
 
-      const baseYear = 2026;
+      const baseYear = 2027; // Año base fijado en 2027
       let shift = ((targetYear - baseYear) % N + N) % N;
       let rotated = [...baseWorkers.slice(shift), ...baseWorkers.slice(0, shift)];
 
@@ -473,7 +476,7 @@
           .eq('ano', year);
         if (errS) throw errS;
 
-        // 4. Estados de renuncias voluntarias en 'turnos' (PASO_R1 o FINALIZADO)
+        // 4. Estados de renuncias voluntarias en 'turnos'
         const { data: turnosDB } = await db
           .from('turnos')
           .select('nombre, estado')
@@ -494,13 +497,11 @@
           conteoPorPersona[nom] = (conteoPorPersona[nom] || 0) + 1;
         });
 
-        // ========================================================
-        // DETERMINAR DE QUIÉN ES EL TURNO (LÓGICA DE 2 RONDAS)
-        // ========================================================
+        // 5. Determinar turno activo (Lógica de 2 rondas)
         let currentTurnWorker = null;
         let rondaActual = 1;
 
-        // FASE 1: ¿Alguien tiene pendiente su 1ª ronda (2 semanas)?
+        // FASE 1: 1ª ronda (2 semanas)
         for (let t of turnosCalculados) {
           let nom = t.nombre.toLowerCase();
           let pedidas = conteoPorPersona[nom] || 0;
@@ -514,7 +515,7 @@
           }
         }
 
-        // FASE 2: Si todos completaron la Ronda 1, buscar quién tiene pendiente la Ronda 2 (hasta 4 semanas)
+        // FASE 2: 2ª ronda (hasta completar 4 semanas)
         if (!currentTurnWorker) {
           rondaActual = 2;
           for (let t of turnosCalculados) {
@@ -534,7 +535,7 @@
         const isMyTurn = currentTurnWorker && (currentTurnWorker.nombre.toLowerCase() === currentUser.nombre.toLowerCase() || currentUser.role === 'gestor');
         const misSemanasPedidas = conteoPorPersona[currentUser.nombre.toLowerCase()] || 0;
 
-        // Semanas 1 a 52 (Jun-Sep límite 2, resto 1)
+        // Semanas 1 a 52 (Junio a Septiembre semanas 23-39 máx 2 personas, resto 1)
         let semanas = [];
         for (let w = 1; w <= 52; w++) {
           let limite = (w >= 23 && w <= 39) ? 2 : 1;
@@ -644,7 +645,7 @@
       }
 
       container.innerHTML = '';
-      const baseYear = 2026;
+      const baseYear = 2027; // Inicio del acordeón en 2027
       const totalWorkers = baseWorkersCache.length;
 
       for (let y = baseYear; y <= baseYear + 9; y++) {
@@ -676,7 +677,7 @@
             <button class="accordion-header" onclick="toggleAccordion('acc-${y}')">
               <div style="display:flex; align-items:center; gap:8px;">
                 <span>Año <b>${y}</b></span>
-                ${esAnoActual ? '<span class="badge bg-blue" style="margin:0;">Actual</span>' : ''}
+                ${esAnoActual ? '<span class="badge bg-blue" style="margin:0;">Activo</span>' : ''}
               </div>
               <span class="material-icons accordion-icon ${esAnoActual ? 'rotated' : ''}" id="icon-acc-${y}">expand_more</span>
             </button>
@@ -743,7 +744,7 @@
             icon: 'swap_horiz',
             iconType: 'success',
             title: '¡1ª Ronda Completada!',
-            message: `Has seleccionado tus 2 semanas de la primera ronda. El turno pasa al siguiente compañero.<br><br>En la <b>2ª ronda</b> volverá a llegarte el turno para elegir tus 2 semanas restantes.`,
+            message: `Has seleccionado tus 2 semanas de la primera ronda. El turno pasa al siguiente compañero.<br><br>En la <b>2ª ronda</b> volverás a tener turno para completar tus 2 semanas restantes.`,
             confirmText: 'Entendido'
           });
         } else if (completoRonda2) {
